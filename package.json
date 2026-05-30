@@ -1,0 +1,26 @@
+{
+  "name": "pi-search-tool",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "keywords": ["pi-package", "pi-extension", "search", "fetch", "web-search", "content-extraction"],
+  "description": "A pi extension that provides web search and content fetch tools using search-headless",
+  "files": ["extensions"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jandrikus/pi-search-tool.git"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "latest",
+    "vitest": "latest"
+  }
+}
