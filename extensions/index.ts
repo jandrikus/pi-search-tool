@@ -118,8 +118,13 @@ async function resolveSearchHeadless(): Promise<string> {
  * Run search-headless with an argument vector and return stdout.
  *
  * No shell is involved: the query and the URL come from the model, and a shell
- * would run whatever `$(...)` or backticks they happened to contain. Throws on
- * a non-zero exit code.
+ * would run whatever `$(...)` or backticks they happened to contain.
+ *
+ * A non-zero exit is not on its own a failure to report. search-headless exits
+ * 1 for `blocked`, `timeout` and `error` and still prints the whole structured
+ * result, so anything on stdout is handed back for the caller to parse; the
+ * status inside it says what went wrong. Only an exit that produced nothing to
+ * parse - bad arguments, a missing binary - throws.
  */
 async function runSearchHeadless(
   bin: string,
@@ -135,8 +140,8 @@ async function runSearchHeadless(
       encoding: "utf-8",
     });
   } catch (error: any) {
-    // If we have partial output on timeout, still return it
-    if (error.killed && error.stdout) {
+    // Covers both a reported failure and a timeout that produced partial output.
+    if (error.stdout) {
       return { stdout: error.stdout, stderr: error.stderr || "" };
     }
     throw new Error(
@@ -216,6 +221,16 @@ function fetchedContentToMarkdown(content: FetchedContent): string {
   }
   
   return lines.join("\n").trim() + "\n";
+}
+
+/**
+ * Whether a status carries something the model can use.
+ *
+ * Mirrors the CLI's exit codes: `ok` and `partial` exit 0, everything else
+ * exits 1.
+ */
+function isUsable(status: CommandStatus): boolean {
+  return status === "ok" || status === "partial";
 }
 
 /**
@@ -306,6 +321,9 @@ export default function (pi: ExtensionAPI) {
             },
           ],
           details,
+          // `partial` still carries usable results; blocked, timeout and error
+          // do not, and the model should treat them as a failed call.
+          isError: !isUsable(response.status),
         };
       } catch (error: any) {
         const details: SearchDetails = {
@@ -486,6 +504,7 @@ export default function (pi: ExtensionAPI) {
             },
           ],
           details,
+          isError: !isUsable(response.status),
         };
       } catch (error: any) {
         const details: FetchDetails = {
