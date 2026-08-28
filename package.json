@@ -11,7 +11,7 @@
     "url": "git+https://github.com/jandrikus/pi-search-tool.git"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
     "test": "vitest run"
   },
   "peerDependencies": {

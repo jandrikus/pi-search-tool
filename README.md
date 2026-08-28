@@ -183,6 +183,22 @@ download. If Brave serves a bot challenge, the tool reports it rather than worki
 
 Brave searches are automatically spaced 10 seconds apart to avoid triggering bot detection. No configuration needed.
 
+## Development
+
+```bash
+bun install
+bun run typecheck   # source and tests
+bun run test
+```
+
+The suite has two halves. `tests/tools.test.ts` registers the extension against
+a stand-in `pi`, puts a recording stub on PATH in place of `search-headless`,
+and drives the very `execute` functions the agent calls - so it pins the exact
+argv the tools build and the markdown the model reads back. `tests/contract.test.ts`
+runs the real binary instead, against a local HTTP server and a SERP fixture, so
+a change to the CLI or its JSON is caught here rather than in a session. It skips
+itself when `search-headless` is not installed. Neither half touches the network.
+
 ## License
 
 Apache-2.0

@@ -1,0 +1,42 @@
+<!doctype html>
+<!--
+  A minimal Brave results page, in the DOM shape search-headless parses.
+  It exists so the contract test can drive the real binary without a network
+  call: point SEARCH_HEADLESS_BRAVE_FIXTURE at this file and the CLI parses it
+  instead of fetching a SERP.
+-->
+<html lang="en-us">
+<head><title>Brave Search</title></head>
+<body>
+  <div id="main">
+    <div class="snippet svelte-jmfu5f" data-pos="0" data-type="web" data-keynav="true">
+      <div class="result-content svelte-1rq4ngz">
+        <a href="https://example.com/first" class="svelte-14r20fy l1">
+          <cite class="snippet-url svelte-on1hvy">example.com <span>› first</span></cite>
+          <div class="title svelte-14r20fy" title="First Contract Result">First Contract Result</div>
+        </a>
+        <div class="generic-snippet svelte-1cwdgg3">
+          <div class="content svelte-1cwdgg3">A snippet the extension renders under the link.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="snippet svelte-jmfu5f" data-pos="1" data-type="web" data-keynav="true">
+      <div class="result-content svelte-1rq4ngz">
+        <a href="https://example.org/second" class="svelte-14r20fy l1">
+          <cite class="snippet-url svelte-on1hvy">example.org <span>› second</span></cite>
+          <div class="title svelte-14r20fy" title="Second Contract Result">Second Contract Result</div>
+        </a>
+      </div>
+    </div>
+
+    <div class="snippet standalone svelte-jmfu5f" data-pos="2" data-type="web">
+      <div class="result-content svelte-1rq4ngz">
+        <a href="https://example.com/video" class="svelte-14r20fy l1">
+          <div class="title svelte-14r20fy" title="A Standalone Video">A Standalone Video</div>
+        </a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

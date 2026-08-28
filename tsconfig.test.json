@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // The package config emits declarations rooted at extensions/; the tests sit
+    // outside that and are only ever typechecked.
+    "rootDir": ".",
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": ["extensions/**/*", "tests/**/*"]
+}
