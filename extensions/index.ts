@@ -2,8 +2,8 @@
  * pi-search-tool — Web search and content fetch extension for pi
  *
  * Provides two tools:
- * - search: Search the internet using search-headless (Brave/Google)
- * - fetch: Fetch and extract content from a URL using search-headless
+ * - search: Search the internet using `search-headless search` (Brave)
+ * - fetch: Fetch and extract content from a URL using `search-headless fetch`
  *
  * Both tools run synchronously and return markdown-formatted results.
  */
@@ -26,7 +26,7 @@ const MAX_TIMEOUT_MS = 120000; // 2 minutes
 // ── Types (matching search-headless JSON structure) ────────────────────
 
 type CommandStatus = "ok" | "partial" | "blocked" | "timeout" | "error";
-type SearchEngine = "google" | "brave";
+type SearchEngine = "brave";
 type FetchMethod = "http" | "browser";
 
 interface ToolError {
@@ -97,17 +97,19 @@ interface FetchDetails {
 // ── Helper Functions ──────────────────────────────────────────────────
 
 /**
- * Resolve the path to a search-headless CLI command
- * Checks if the command is available in PATH
+ * Resolve the path to the search-headless binary.
+ *
+ * search-headless is one executable with `search` and `fetch` subcommands; it
+ * used to install two separate commands, `search-web` and `fetch-content`.
  */
-async function resolveCommand(command: string): Promise<string> {
+async function resolveSearchHeadless(): Promise<string> {
   try {
-    const { stdout } = await execAsync(`which ${command}`);
+    const { stdout } = await execAsync("which search-headless");
     return stdout.trim();
   } catch {
     throw new Error(
-      `Command '${command}' not found. Please install search-headless: ` +
-      `cd ~/dev/search-headless && ./install.sh`
+      "Command 'search-headless' not found. Please install search-headless: " +
+      "cd ~/dev/search-headless && ./install.sh"
     );
   }
 }
@@ -144,7 +146,7 @@ async function executeCommand(
 // ── JSON to Markdown Conversion ──────────────────────────────────────
 
 /**
- * Convert SearchResponse JSON to markdown (similar to search-web --format markdown)
+ * Convert SearchResponse JSON to markdown (similar to `search --format markdown`)
  */
 function searchResponseToMarkdown(response: SearchResponse): string {
   const lines: string[] = [`# Search results for \`${response.query}\``, ""];
@@ -173,7 +175,7 @@ function searchResponseToMarkdown(response: SearchResponse): string {
 }
 
 /**
- * Convert FetchedContent JSON to markdown (similar to fetch-content --format markdown)
+ * Convert FetchedContent JSON to markdown (similar to `fetch --format markdown`)
  */
 function fetchedContentToMarkdown(content: FetchedContent): string {
   const lines: string[] = [];
@@ -237,7 +239,7 @@ export default function (pi: ExtensionAPI) {
       "Use search to find relevant web pages before fetching their content.",
       "Provide clear, specific search terms for better results.",
       "Results include titles, URLs, and snippets — use fetch to read full content.",
-      "Search uses Brave by default (fast, no CAPTCHA issues).",
+      "Brave is the only engine; a bot challenge is reported as blocked, never solved.",
     ],
     parameters: Type.Object({
       query: Type.String({
@@ -258,11 +260,10 @@ export default function (pi: ExtensionAPI) {
       const limitArg = Math.min(Math.max(1, limit), 20);
 
       try {
-        // Resolve the search-web command
-        const searchCmd = await resolveCommand("search-web");
+        const bin = await resolveSearchHeadless();
 
         // Build the command with JSON output
-        const cmd = `${searchCmd} --limit ${limitArg} --format json "${query.replace(/"/g, '\\"')}"`;
+        const cmd = `${bin} search --limit ${limitArg} --format json "${query.replace(/"/g, '\\"')}"`;
 
         // Execute synchronously
         const { stdout, stderr } = await executeCommand(cmd);
@@ -377,8 +378,8 @@ export default function (pi: ExtensionAPI) {
     name: "fetch",
     label: "Fetch",
     description:
-      "Fetch the full content of a URL. Uses multiple extraction methods " +
-      "(Obscura, HTTP+Readability, Playwright) for best results. " +
+      "Fetch the full content of a URL. Tries HTTP + Readability first and falls " +
+      "back to a real browser render for pages written by script. " +
       "Use after search to read primary sources in depth.",
     promptSnippet: "Fetch full content of a URL",
     promptGuidelines: [
@@ -430,11 +431,10 @@ export default function (pi: ExtensionAPI) {
       }
 
       try {
-        // Resolve the fetch-content command
-        const fetchCmd = await resolveCommand("fetch-content");
+        const bin = await resolveSearchHeadless();
 
         // Build the command with JSON output
-        const cmd = `${fetchCmd} --max-chars ${maxCharsArg} --format json "${url}"`;
+        const cmd = `${bin} fetch --max-chars ${maxCharsArg} --format json "${url}"`;
 
         // Execute synchronously
         const { stdout, stderr } = await executeCommand(cmd);

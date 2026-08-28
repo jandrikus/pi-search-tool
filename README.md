@@ -5,19 +5,19 @@ A [Pi Coding Agent](https://github.com/earendil-works/pi-coding-agent) extension
 ## Features
 
 - **`search`** — Search the internet using Brave Search (default). Returns titles, URLs, and snippets in markdown format.
-- **`fetch`** — Fetch and extract clean content from any URL. Uses multiple extraction methods (Obscura, HTTP+Readability, Playwright) for best results.
+- **`fetch`** — Fetch and extract clean content from any URL. Tries HTTP + Readability first and falls back to a real browser render for pages written by script.
 
-Both tools provide rich metadata in the UI (search engine, result count, content size, truncation status, etc.) and clean markdown output for the LLM.
+Both tools provide rich metadata in the UI (result count, content size, truncation status, etc.) and clean markdown output for the LLM.
 
 ## Prerequisites
 
-This extension requires [`search-headless`](https://github.com/jandrikus/search-headless) to be installed on your machine. The extension calls the `search-web` and `fetch-content` CLI commands provided by search-headless.
+This extension requires [`search-headless`](https://github.com/jandrikus/search-headless) to be installed on your machine. The extension shells out to its `search` and `fetch` subcommands.
 
 ### Install search-headless
 
 **Requirements:**
 - `git`
-- `bun` (recommended) or `npm`
+- `cargo` (see [rustup.rs](https://rustup.rs))
 
 **Steps:**
 
@@ -32,26 +32,21 @@ cd ~/dev/search-headless
 ```
 
 The install script will:
-- Detect `bun` or `npm` (prefers bun, falls back to npm)
 - Install `obscura` automatically if not found
-- Install dependencies
-- Install Playwright Chromium (for Google fallback)
-- Link commands globally (`bun link` / `npm link`)
+- Build the binary with `cargo build --release`
+- Copy it to `~/.local/bin`
 
 **Verify installation:**
 
 ```bash
-search-web "bun typescript" --limit 5 --timeout 15000
-fetch-content https://example.com --max-chars 500
+search-headless search "rust async" --limit 5 --timeout 15000
+search-headless fetch https://example.com --max-chars 500
 ```
 
-If the commands are not found, ensure your global bin directory is on PATH:
+If the command is not found, put the install directory on PATH:
 
 ```bash
-# For bun
-export PATH="$HOME/.bun/bin:$PATH"
-# For npm
-export PATH="$(npm bin -g):$PATH"
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
 For more details, see the [search-headless README](https://github.com/jandrikus/search-headless).
@@ -153,7 +148,7 @@ fetch(url: "https://example.com/article", maxChars: 50000)
 The extension provides rich UI rendering with collapsed and expanded views:
 
 **Search:**
-- Collapsed: Shows query, search engine, result count, and preview of results
+- Collapsed: Shows query, result count, and preview of results
 - Expanded: Shows full markdown content of all results
 
 **Fetch:**
@@ -161,7 +156,7 @@ The extension provides rich UI rendering with collapsed and expanded views:
 - Expanded: Shows full markdown content of the page
 
 **Metadata displayed:**
-- Search engine used (Brave/Google)
+- Search engine used (Brave)
 - Number of search results
 - Content size in human-readable format
 - Truncation indicator
@@ -170,19 +165,19 @@ The extension provides rich UI rendering with collapsed and expanded views:
 
 ## How It Works
 
-1. The extension calls `search-web --format json` and `fetch-content --format json` from search-headless
+1. The extension calls `search-headless search --format json` and `search-headless fetch --format json`
 2. Parses the JSON response to extract structured metadata
 3. Converts the JSON to clean markdown for the LLM
 4. Displays rich metadata in the UI with collapsed/expanded states
 
 ## Search Engines
 
-| Engine | Default | Backend | CAPTCHA |
-|--------|---------|---------|---------|
-| **Brave** | ✅ Yes | Obscura | Auto-solved |
-| **Google** | `--google` flag | Playwright | Human-in-the-loop |
+| Engine | Backend | Challenge | Login |
+|--------|---------|-----------|-------|
+| **Brave** | Obscura | Reported as `blocked`, never solved | Not required |
 
-Brave Search is the default — fast, lightweight, no session management needed.
+Brave is the only engine. Obscura is the only browser — there is no Playwright, and no Chromium
+download. If Brave serves a bot challenge, the tool reports it rather than working around it.
 
 ## Rate Limiting
 
