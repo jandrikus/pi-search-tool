@@ -8,7 +8,7 @@
  * Both tools run synchronously and return markdown-formatted results.
  */
 
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -16,7 +16,7 @@ import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import { Box, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 // ── Constants ──────────────────────────────────────────────────────────
 
@@ -104,7 +104,7 @@ interface FetchDetails {
  */
 async function resolveSearchHeadless(): Promise<string> {
   try {
-    const { stdout } = await execAsync("which search-headless");
+    const { stdout } = await execFileAsync("which", ["search-headless"]);
     return stdout.trim();
   } catch {
     throw new Error(
@@ -115,22 +115,25 @@ async function resolveSearchHeadless(): Promise<string> {
 }
 
 /**
- * Execute a shell command with timeout and return stdout
- * Throws on non-zero exit code
+ * Run search-headless with an argument vector and return stdout.
+ *
+ * No shell is involved: the query and the URL come from the model, and a shell
+ * would run whatever `$(...)` or backticks they happened to contain. Throws on
+ * a non-zero exit code.
  */
-async function executeCommand(
-  command: string,
+async function runSearchHeadless(
+  bin: string,
+  args: string[],
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ): Promise<{ stdout: string; stderr: string }> {
   const clampedTimeout = Math.min(timeoutMs, MAX_TIMEOUT_MS);
-  
+
   try {
-    const result = await execAsync(command, {
+    return await execFileAsync(bin, args, {
       timeout: clampedTimeout,
       maxBuffer: 10 * 1024 * 1024, // 10MB buffer
       encoding: "utf-8",
     });
-    return result;
   } catch (error: any) {
     // If we have partial output on timeout, still return it
     if (error.killed && error.stdout) {
@@ -262,11 +265,16 @@ export default function (pi: ExtensionAPI) {
       try {
         const bin = await resolveSearchHeadless();
 
-        // Build the command with JSON output
-        const cmd = `${bin} search --limit ${limitArg} --format json "${query.replace(/"/g, '\\"')}"`;
-
-        // Execute synchronously
-        const { stdout, stderr } = await executeCommand(cmd);
+        // `--` keeps a query that starts with a dash from being read as a flag.
+        const { stdout, stderr } = await runSearchHeadless(bin, [
+          "search",
+          "--limit",
+          String(limitArg),
+          "--format",
+          "json",
+          "--",
+          query,
+        ]);
 
         // Parse JSON response
         let response: SearchResponse;
@@ -433,11 +441,15 @@ export default function (pi: ExtensionAPI) {
       try {
         const bin = await resolveSearchHeadless();
 
-        // Build the command with JSON output
-        const cmd = `${bin} fetch --max-chars ${maxCharsArg} --format json "${url}"`;
-
-        // Execute synchronously
-        const { stdout, stderr } = await executeCommand(cmd);
+        const { stdout, stderr } = await runSearchHeadless(bin, [
+          "fetch",
+          "--max-chars",
+          String(maxCharsArg),
+          "--format",
+          "json",
+          "--",
+          url,
+        ]);
 
         // Parse JSON response
         let response: FetchedContent;
