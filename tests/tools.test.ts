@@ -77,6 +77,14 @@ describe("the command that gets run", () => {
     ]);
   });
 
+  it("requests additional pages only with an explicit opt-in", async () => {
+    stub.respondWith(OK_SEARCH);
+    await search.execute("c", { query: "q", limit: 20 });
+    expect(stub.argv()).not.toContain("--paginate");
+    await search.execute("c", { query: "q", limit: 20, paginate: true });
+    expect(stub.argv()).toEqual(["search", "--limit", "20", "--paginate", "--format", "json", "--", "q"]);
+  });
+
   it("invokes the fetch subcommand with the url as its own argument", async () => {
     stub.respondWith(OK_FETCH);
     await fetchTool.execute("call-1", { url: "https://example.com/article", maxChars: 4000 });
@@ -177,6 +185,32 @@ describe("what the model reads back", () => {
     expect(text).toContain("- Snippet: A snippet about the first result.");
     expect(text).toContain("2. [Second Result](https://example.org/two)");
     expect(result.isError).toBeFalsy();
+  });
+
+  it("distinguishes a confirmed empty search from an unreadable page", async () => {
+    stub.respondWith({ ...OK_SEARCH, results: [] });
+    const empty = await search.execute("c", { query: "q" });
+    expect(empty.content[0].text).toContain("Brave reported no matching results.");
+    stub.failWith(1, JSON.stringify({ ...OK_SEARCH, status: "error", results: [], errors: [{
+      code: "BRAVE_PARSE_ERROR", message: "Brave result markup changed.", recoverable: false,
+      details: { pageUrl: "https://search.brave.com/search", webSnippetCount: 5, resultLinkCount: 0 },
+    }] }));
+    const failed = await search.execute("c", { query: "q" });
+    expect(failed.isError).toBe(true);
+    expect(failed.content[0].text).not.toContain("no matching results");
+    expect(failed.content[0].text).toContain("BRAVE_PARSE_ERROR");
+    expect(failed.content[0].text).toContain("Result containers: 5; result links: 0");
+  });
+
+  it("keeps the cooldown wait visible to the model", async () => {
+    stub.failWith(1, JSON.stringify({ ...OK_SEARCH, status: "blocked", results: [], errors: [{
+      code: "BRAVE_COOLDOWN", message: "Retry in 890s; no request was sent.", recoverable: true,
+      details: { retryAfterSeconds: 890 },
+    }] }));
+    const result = await search.execute("c", { query: "q" });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Retry in 890s");
+    expect(result.details.errors[0].details.retryAfterSeconds).toBe(890);
   });
 
   it("includes the page body when the search was run with content fetching", async () => {

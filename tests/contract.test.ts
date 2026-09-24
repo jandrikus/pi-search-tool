@@ -164,6 +164,13 @@ describeWithBinary("against the real search-headless binary", () => {
     expect(text).not.toContain("A Standalone Video");
   });
 
+  it("passes explicit pagination through the installed CLI", async () => {
+    process.env.SEARCH_HEADLESS_BRAVE_FIXTURE = FIXTURE;
+    const result = await search.execute("c", { query: "contract", limit: 20, paginate: true });
+    expect(result.isError).toBeFalsy();
+    expect(result.details.resultCount).toBe(2);
+  });
+
   it("honours the limit the model asked for", async () => {
     process.env.SEARCH_HEADLESS_BRAVE_FIXTURE = FIXTURE;
     const result = await search.execute("c", { query: "contract", limit: 1 });

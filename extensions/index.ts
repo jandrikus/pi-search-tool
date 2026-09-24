@@ -20,7 +20,7 @@ const execFileAsync = promisify(execFile);
 
 // ── Constants ──────────────────────────────────────────────────────────
 
-const DEFAULT_TIMEOUT_MS = 30000; // 30 seconds
+const DEFAULT_TIMEOUT_MS = 65000; // CLI's 60-second budget plus time to report it.
 const MAX_TIMEOUT_MS = 120000; // 2 minutes
 
 // ── Types (matching search-headless JSON structure) ────────────────────
@@ -158,6 +158,9 @@ async function runSearchHeadless(
  */
 function searchResponseToMarkdown(response: SearchResponse): string {
   const lines: string[] = [`# Search results for \`${response.query}\``, ""];
+  if (response.status === "ok" && response.results.length === 0) {
+    lines.push("Brave reported no matching results.", "");
+  }
   
   for (const result of response.results) {
     lines.push(`${result.rank}. [${result.title}](${result.url})`);
@@ -176,6 +179,10 @@ function searchResponseToMarkdown(response: SearchResponse): string {
     lines.push("## Errors", "");
     for (const error of response.errors) {
       lines.push(`- ${error.code}: ${error.message}`);
+      if (error.details?.pageUrl) lines.push(`  Page: ${error.details.pageUrl}`);
+      if (error.details?.webSnippetCount !== undefined) {
+        lines.push(`  Result containers: ${error.details.webSnippetCount}; result links: ${error.details.resultLinkCount}`);
+      }
     }
   }
   
@@ -251,13 +258,15 @@ export default function (pi: ExtensionAPI) {
     label: "Search",
     description:
       "Search the internet using one or more query terms. Returns titles, URLs, and snippets. " +
-      "Use for initial discovery before fetching full content.",
+      "Use for initial discovery before fetching full content. Reads one results page unless paginate is true.",
     promptSnippet: "Search the internet with one or more query terms",
     promptGuidelines: [
       "Use search to find relevant web pages before fetching their content.",
       "Provide clear, specific search terms for better results.",
-      "Results include titles, URLs, and snippets — use fetch to read full content.",
+      "Results include titles, URLs, and snippets. Use fetch to read full content.",
       "Brave is the only engine; a bot challenge is reported as blocked, never solved.",
+      "Set paginate to true only when you need results beyond the first page.",
+      "After a challenge, searches share a cooldown. Do not retry until the reported wait has elapsed.",
     ],
     parameters: Type.Object({
       query: Type.String({
@@ -266,16 +275,19 @@ export default function (pi: ExtensionAPI) {
           "Examples: 'best practices for REST API design', 'TypeScript generics tutorial'",
       }),
       limit: Type.Optional(
-        Type.Number({
-          description: "Maximum number of results to return (default: 10, max: 20)",
+        Type.Integer({
+          description: "Maximum number of results to return (default: 10, max: 20). Does not enable pagination.",
           minimum: 1,
           maximum: 20,
         }),
       ),
+      paginate: Type.Optional(Type.Boolean({
+        description: "Follow additional result pages until the limit is reached (default: false). Sends extra requests.",
+      })),
     }),
-    async execute(toolCallId: string, params: { query: string; limit?: number }, signal: any, onUpdate: any, ctx: any) {
-      const { query, limit = 10 } = params;
-      const limitArg = Math.min(Math.max(1, limit), 20);
+    async execute(toolCallId: string, params: { query: string; limit?: number; paginate?: boolean }, signal: any, onUpdate: any, ctx: any) {
+      const { query, limit = 10, paginate = false } = params;
+      const limitArg = Math.min(Math.max(1, Math.floor(limit)), 20);
 
       try {
         const bin = await resolveSearchHeadless();
@@ -285,6 +297,7 @@ export default function (pi: ExtensionAPI) {
           "search",
           "--limit",
           String(limitArg),
+          ...(paginate ? ["--paginate"] : []),
           "--format",
           "json",
           "--",
