@@ -2,17 +2,19 @@
  * pi-search-tool — Web search and content fetch extension for pi
  *
  * Provides two tools:
- * - search: Search the internet using `search-headless search` (Brave)
+ * - search: Search using SearXNG by default, or Brave when configured
  * - fetch: Fetch and extract content from a URL using `search-headless fetch`
  *
  * Both tools run synchronously and return markdown-formatted results.
  */
 
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { promisify } from "node:util";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import { Box, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
@@ -26,7 +28,7 @@ const MAX_TIMEOUT_MS = 120000; // 2 minutes
 // ── Types (matching search-headless JSON structure) ────────────────────
 
 type CommandStatus = "ok" | "partial" | "blocked" | "timeout" | "error";
-type SearchEngine = "brave";
+type SearchEngine = "brave" | "searxng";
 type FetchMethod = "http" | "browser";
 
 interface ToolError {
@@ -96,6 +98,40 @@ interface FetchDetails {
 
 // ── Helper Functions ──────────────────────────────────────────────────
 
+/** Only user settings may choose where authentication credentials are sent.
+ * Project settings cannot override the endpoint. Reloaded on each search.
+ */
+function searchSettings(): { engine: SearchEngine; url?: string } {
+  let settings: any;
+  try {
+    settings = JSON.parse(readFileSync(join(getAgentDir(), "settings.json"), "utf-8"));
+  } catch (error: any) {
+    if (error.code !== "ENOENT") throw new Error("Cannot read Pi settings.json. Check its permissions and JSON syntax.");
+    settings = {};
+  }
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+    throw new Error("Pi settings.json must contain a JSON object.");
+  }
+  const config = settings.searchTool ?? {};
+  if (!config || typeof config !== "object" || Array.isArray(config)) {
+    throw new Error("searchTool in Pi settings.json must be an object.");
+  }
+  const engine = config.engine ?? "searxng";
+  if (engine !== "brave" && engine !== "searxng") {
+    throw new Error("searchTool.engine must be searxng or brave.");
+  }
+  if (engine === "brave") return { engine };
+  const value = config.searxngUrl ?? process.env.SEARXNG_URL;
+  const invalid = () => new Error("Set searchTool.searxngUrl in user Pi settings.json to your SearXNG HTTPS base URL, without credentials, query parameters, or fragments.");
+  if (typeof value !== "string" || !value.trim()) throw invalid();
+  let url: URL;
+  try { url = new URL(value); } catch { throw invalid(); }
+  const testHttp = process.env.SEARCH_HEADLESS_ALLOW_PRIVATE_URLS_FOR_TESTS === "1"
+    && url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  if ((url.protocol !== "https:" && !testHttp) || url.username || url.password || url.search || url.hash) throw invalid();
+  return { engine, url: url.href };
+}
+
 /**
  * Resolve the path to the search-headless binary.
  *
@@ -159,7 +195,7 @@ async function runSearchHeadless(
 function searchResponseToMarkdown(response: SearchResponse): string {
   const lines: string[] = [`# Search results for \`${response.query}\``, ""];
   if (response.status === "ok" && response.results.length === 0) {
-    lines.push("Brave reported no matching results.", "");
+    lines.push(`${response.engine === "searxng" ? "SearXNG" : "Brave"} reported no matching results.`, "");
   }
   
   for (const result of response.results) {
@@ -264,9 +300,10 @@ export default function (pi: ExtensionAPI) {
       "Use search to find relevant web pages before fetching their content.",
       "Provide clear, specific search terms for better results.",
       "Results include titles, URLs, and snippets. Use fetch to read full content.",
-      "Brave is the only engine; a bot challenge is reported as blocked, never solved.",
+      "Search uses SearXNG by default, or Brave if configured in user Pi settings. There is no automatic fallback between them.",
+      "Bot challenges are reported, never solved.",
       "Set paginate to true only when you need results beyond the first page.",
-      "After a challenge, searches share a cooldown. Do not retry until the reported wait has elapsed.",
+      "Brave searches share a cooldown after a challenge. Do not retry until the reported wait has elapsed.",
     ],
     parameters: Type.Object({
       query: Type.String({
@@ -288,13 +325,19 @@ export default function (pi: ExtensionAPI) {
     async execute(toolCallId: string, params: { query: string; limit?: number; paginate?: boolean }, signal: any, onUpdate: any, ctx: any) {
       const { query, limit = 10, paginate = false } = params;
       const limitArg = Math.min(Math.max(1, Math.floor(limit)), 20);
+      let engine: SearchEngine = "searxng";
 
       try {
+        const settings = searchSettings();
+        engine = settings.engine;
         const bin = await resolveSearchHeadless();
 
         // `--` keeps a query that starts with a dash from being read as a flag.
         const { stdout, stderr } = await runSearchHeadless(bin, [
           "search",
+          "--engine",
+          engine,
+          ...(settings.url ? ["--searxng-url", settings.url] : []),
           "--limit",
           String(limitArg),
           ...(paginate ? ["--paginate"] : []),
@@ -342,7 +385,7 @@ export default function (pi: ExtensionAPI) {
         const details: SearchDetails = {
           query,
           limit: limitArg,
-          engine: "brave", // default
+          engine,
           status: "error",
           resultCount: 0,
           hasErrors: true,

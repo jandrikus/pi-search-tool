@@ -48,6 +48,7 @@ export function loadTools(): Map<string, Tool> {
 export class StubBinary {
   readonly dir: string;
   private readonly originalPath: string | undefined;
+  private readonly originalAgentDir: string | undefined;
 
   constructor() {
     this.dir = mkdtempSync(join(tmpdir(), "pi-search-stub-"));
@@ -67,7 +68,14 @@ export class StubBinary {
     chmodSync(bin, 0o755);
 
     this.originalPath = process.env.PATH;
+    this.originalAgentDir = process.env.PI_CODING_AGENT_DIR;
     process.env.PATH = `${this.dir}:${process.env.PATH ?? ""}`;
+    process.env.PI_CODING_AGENT_DIR = this.dir;
+    this.configureSearch({ engine: "brave" });
+  }
+
+  configureSearch(settings: unknown): void {
+    writeFileSync(join(this.dir, "settings.json"), JSON.stringify({ searchTool: settings }));
   }
 
   /** What the stub prints on stdout. */
@@ -96,6 +104,8 @@ export class StubBinary {
   restore(): void {
     if (this.originalPath === undefined) delete process.env.PATH;
     else process.env.PATH = this.originalPath;
+    if (this.originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = this.originalAgentDir;
     rmSync(this.dir, { recursive: true, force: true });
   }
 }

@@ -68,6 +68,8 @@ describe("the command that gets run", () => {
 
     expect(stub.argv()).toEqual([
       "search",
+      "--engine",
+      "brave",
       "--limit",
       "5",
       "--format",
@@ -82,7 +84,7 @@ describe("the command that gets run", () => {
     await search.execute("c", { query: "q", limit: 20 });
     expect(stub.argv()).not.toContain("--paginate");
     await search.execute("c", { query: "q", limit: 20, paginate: true });
-    expect(stub.argv()).toEqual(["search", "--limit", "20", "--paginate", "--format", "json", "--", "q"]);
+    expect(stub.argv()).toEqual(["search", "--engine", "brave", "--limit", "20", "--paginate", "--format", "json", "--", "q"]);
   });
 
   it("invokes the fetch subcommand with the url as its own argument", async () => {
@@ -116,7 +118,7 @@ describe("the command that gets run", () => {
   it("defaults to a limit of 10 and 50000 max chars when the model omits them", async () => {
     stub.respondWith(OK_SEARCH);
     await search.execute("c", { query: "q" });
-    expect(stub.argv()).toEqual(["search", "--limit", "10", "--format", "json", "--", "q"]);
+    expect(stub.argv()).toEqual(["search", "--engine", "brave", "--limit", "10", "--format", "json", "--", "q"]);
 
     stub.respondWith(OK_FETCH);
     await fetchTool.execute("c", { url: "https://example.com" });
@@ -129,6 +131,48 @@ describe("the command that gets run", () => {
       "--",
       "https://example.com",
     ]);
+  });
+});
+
+describe("SearXNG settings", () => {
+  it("defaults to SearXNG and passes only the configured URL on argv", async () => {
+    stub.configureSearch({ searxngUrl: "https://search.example.test/searxng" });
+    stub.respondWith({ ...OK_SEARCH, engine: "searxng" });
+    const result = await search.execute("c", { query: "q", paginate: true });
+    expect(stub.argv()).toEqual(["search", "--engine", "searxng", "--searxng-url", "https://search.example.test/searxng", "--limit", "10", "--paginate", "--format", "json", "--", "q"]);
+    expect(result.details.engine).toBe("searxng");
+    expect(result.isError).toBeFalsy();
+  });
+
+  it("reloads the endpoint from user settings on each call", async () => {
+    stub.respondWith({ ...OK_SEARCH, engine: "searxng" });
+    stub.configureSearch({ searxngUrl: "https://one.example.test" });
+    await search.execute("c", { query: "q" });
+    expect(stub.argv()).toContain("https://one.example.test/");
+    stub.configureSearch({ searxngUrl: "https://two.example.test" });
+    await search.execute("c", { query: "q" });
+    expect(stub.argv()).toContain("https://two.example.test/");
+  });
+
+  it("rejects unsafe endpoint settings without exposing their contents", async () => {
+    for (const url of ["http://search.example.test", "https://synthetic-user:synthetic-pass@search.example.test", "https://search.example.test?token=synthetic-pass", ""]) {
+      stub.configureSearch({ searxngUrl: url });
+      const result = await search.execute("c", { query: "q" });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("searchTool.searxngUrl");
+      expect(result.content[0].text).not.toContain("synthetic-pass");
+      expect(stub.argv()).toBeUndefined();
+    }
+  });
+
+  it("does not fall back to Brave when SearXNG authentication fails", async () => {
+    stub.configureSearch({ searxngUrl: "https://search.example.test" });
+    stub.failWith(1, JSON.stringify({ ...OK_SEARCH, engine: "searxng", status: "error", results: [], errors: [{ code: "SEARXNG_AUTH_FAILED", message: "Authentication failed.", recoverable: false }] }));
+    const result = await search.execute("c", { query: "q" });
+    expect(result.isError).toBe(true);
+    expect(result.details.engine).toBe("searxng");
+    expect(result.content[0].text).toContain("SEARXNG_AUTH_FAILED");
+    expect(stub.argv()).not.toContain("brave");
   });
 });
 

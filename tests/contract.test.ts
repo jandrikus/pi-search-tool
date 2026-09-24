@@ -11,7 +11,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -56,6 +56,9 @@ describeWithBinary("against the real search-headless binary", () => {
   let fetchTool: Tool;
 
   const ENV_KEYS = [
+    "PI_CODING_AGENT_DIR",
+    "SEARXNG_USER",
+    "SEARXNG_PASS",
     "SEARCH_HEADLESS_CACHE_DIR",
     "SEARCH_HEADLESS_RATE_FILE",
     "SEARCH_HEADLESS_NO_RATE_LIMIT",
@@ -71,6 +74,8 @@ describeWithBinary("against the real search-headless binary", () => {
 
   beforeEach(() => {
     saved = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
+    process.env.PI_CODING_AGENT_DIR = sandbox;
+    writeFileSync(join(sandbox, "settings.json"), JSON.stringify({ searchTool: { engine: "brave" } }));
     // Keep the suite off the developer's real cache and out of the 10s search spacing.
     process.env.SEARCH_HEADLESS_CACHE_DIR = join(sandbox, "cache");
     process.env.SEARCH_HEADLESS_RATE_FILE = join(sandbox, "last-search");
@@ -162,6 +167,28 @@ describeWithBinary("against the real search-headless binary", () => {
     expect(text).toContain("2. [Second Contract Result](https://example.org/second)");
     // Standalone snippets are not organic results.
     expect(text).not.toContain("A Standalone Video");
+  });
+
+  it("searches through SearXNG using user settings and inherited credentials", async () => {
+    const server = await serve(JSON.stringify({
+      results: [{ title: "SearXNG result", url: "https://example.org/result", content: "A useful result." }],
+      unresponsive_engines: [["wikidata", "timeout"]],
+    }), "application/json");
+    try {
+      writeFileSync(join(sandbox, "settings.json"), JSON.stringify({ searchTool: { searxngUrl: server.url } }));
+      process.env.SEARXNG_USER = "test-user";
+      process.env.SEARXNG_PASS = "test-pass";
+      const result = await search.execute("c", { query: "searxng contract" });
+      expect(result.isError).toBeFalsy();
+      expect(result.details.engine).toBe("searxng");
+      expect(result.details.status).toBe("partial");
+      expect(result.details.resultCount).toBe(1);
+      expect(result.content[0].text).toContain("SearXNG result");
+      expect(result.content[0].text).toContain("SEARXNG_ENGINE_ERROR");
+      expect(result.content[0].text).not.toContain("test-pass");
+    } finally {
+      await server.close();
+    }
   });
 
   it("passes explicit pagination through the installed CLI", async () => {
