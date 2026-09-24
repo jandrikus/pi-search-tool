@@ -17,6 +17,12 @@ export interface Tool {
   name: string;
   description: string;
   promptGuidelines?: string[];
+  renderResult(
+    result: any,
+    options: { expanded: boolean; isPartial: boolean },
+    theme: any,
+    context: any,
+  ): { render(width: number): string[] };
   execute(
     toolCallId: string,
     params: any,

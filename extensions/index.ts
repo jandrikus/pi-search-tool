@@ -11,7 +11,7 @@
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { promisify } from "node:util";
+import { promisify, stripVTControlCharacters } from "node:util";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getAgentDir, getMarkdownTheme } from "@earendil-works/pi-coding-agent";
@@ -77,6 +77,7 @@ interface SearchDetails {
   engine: SearchEngine;
   status: CommandStatus;
   resultCount: number;
+  resultTitles?: string[];
   hasErrors: boolean;
   errors: ToolError[];
 }
@@ -212,7 +213,7 @@ function searchResponseToMarkdown(response: SearchResponse): string {
   }
   
   if (response.errors.length > 0) {
-    lines.push("## Errors", "");
+    lines.push(response.status === "partial" ? "## Warnings" : "## Errors", "");
     for (const error of response.errors) {
       lines.push(`- ${error.code}: ${error.message}`);
       if (error.details?.pageUrl) lines.push(`  Page: ${error.details.pageUrl}`);
@@ -365,6 +366,7 @@ export default function (pi: ExtensionAPI) {
           engine: response.engine,
           status: response.status,
           resultCount: response.results.length,
+          resultTitles: response.results.map(result => result.title),
           hasErrors: response.errors.length > 0,
           errors: response.errors,
         };
@@ -414,43 +416,45 @@ export default function (pi: ExtensionAPI) {
     },
     renderResult(result: any, options: { expanded: boolean; isPartial: boolean }, theme: any, context: any) {
       const details = result.details as SearchDetails | undefined;
-      const mdTheme = getMarkdownTheme();
-      const isError = details?.status === "error" || details?.hasErrors;
-      const icon = isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
-      
-      // Only show status/result, not the query (renderCall already shows it)
-      let text = `${icon}`;
-      if (details?.engine) {
-        text += ` ${theme.fg("accent", `[${details.engine}]`)}`;
-      }
-      if (details?.status === "ok" && details.resultCount > 0) {
-        text += ` — ${theme.fg("dim", `${details.resultCount} results`)}`;
-      }
+      if (options.isPartial && !details) return new Text(theme.fg("dim", "Searching..."), 0, 0);
 
-      // Show errors on new line if any
-      if (isError && details?.errors?.length) {
-        const errorMsg = details.errors[0].message;
-        text += `\n${theme.fg("error", errorMsg)}`;
+      const isError = details ? !isUsable(details.status) : Boolean(result.isError);
+      const warningCount = !isError ? details?.errors?.length ?? 0 : 0;
+      let text = isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
+      if (details?.engine) text += ` ${theme.fg("accent", `[${details.engine}]`)}`;
+      if (details && (!isError || details.resultCount > 0)) {
+        text += ` ${theme.fg("dim", `${details.resultCount} ${details.resultCount === 1 ? "result" : "results"}`)}`;
+      }
+      if (warningCount > 0) {
+        text += ` · ${theme.fg("warning", `${warningCount} ${warningCount === 1 ? "warning" : "warnings"}`)}`;
+      } else if (details?.status === "partial") {
+        text += ` · ${theme.fg("warning", "partial")}`;
+      }
+      if (isError) {
+        const message = details?.errors?.[0]?.message ?? result.content?.[0]?.text;
+        if (message) text += `\n${theme.fg("error", message)}`;
       }
 
       if (options.expanded && result.content?.[0]?.text) {
         const container = new Box(1, 1, (t: string) => theme.bg("customMessageBg", t));
         container.addChild(new Text(text, 0, 0));
         container.addChild(new Spacer(1));
-        container.addChild(new Markdown(result.content[0].text, 0, 0, mdTheme));
+        container.addChild(new Markdown(result.content[0].text, 0, 0, getMarkdownTheme()));
         return container;
       }
 
-      // Collapsed: show first few lines of results (no extra Box wrapper)
-      if (result.content?.[0]?.text && !isError) {
-        const lines = result.content[0].text.split("\n");
-        const preview = lines.slice(0, 6).join("\n");
-        text += `\n${theme.fg("dim", preview)}`;
-        if (lines.length > 6) {
-          text += `\n${theme.fg("muted", `... (${lines.length - 6} more lines)`)}`;
-        }
+      // Older session entries have no resultTitles. Recover their link titles
+      // rather than showing the query and warning text again.
+      const titles: string[] = details?.resultTitles ?? Array.from(
+        (result.content?.[0]?.text ?? "").matchAll(/^\d+\. \[(.*)\]\(/gm),
+        (match: RegExpMatchArray) => match[1],
+      );
+      for (const title of titles.slice(0, 3)) {
+        const plain = stripVTControlCharacters(title).replace(/\s+/g, " ").trim();
+        text += `\n  ${theme.fg("dim", plain)}`;
       }
-
+      const remaining = (details?.resultCount ?? titles.length) - Math.min(titles.length, 3);
+      if (remaining > 0) text += `\n  ${theme.fg("muted", `... ${remaining} more results`)}`;
       return new Text(text, 0, 0);
     },
   });
