@@ -18,8 +18,8 @@ This extension requires [`search-headless`](https://github.com/jandrikus/search-
 ### Install search-headless
 
 Follow the [search-headless installation instructions](https://github.com/jandrikus/search-headless#install-on-a-machine).
-The first prebuilt release is planned for Apple Silicon macOS and x86-64 Linux.
-Until it is published, install from source using Git and Rust.
+Prebuilt releases are available for Apple Silicon macOS and x86-64 Linux.
+Other supported machines can install from source using Git and Rust.
 
 **Verify installation:**
 
