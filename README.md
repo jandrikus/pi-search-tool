@@ -4,8 +4,10 @@ A [Pi Coding Agent](https://github.com/earendil-works/pi-coding-agent) extension
 
 ## Features
 
-- **`search`** — Search the internet using Brave Search (default). Returns titles, URLs, and snippets in markdown format.
-- **`fetch`** — Fetch and extract clean content from any URL. Tries HTTP + Readability first and falls back to a real browser render for pages written by script.
+- **`search`** searches using a configured SearXNG instance by default, or Brave when selected.
+  It returns titles, URLs and snippets in Markdown.
+- **`fetch`** extracts content from a public HTTP or HTTPS URL.
+  It tries HTTP + Readability first and falls back to an Obscura render when appropriate.
 
 Both tools provide rich metadata in the UI (result count, content size, truncation status, etc.) and clean markdown output for the LLM.
 
@@ -15,26 +17,9 @@ This extension requires [`search-headless`](https://github.com/jandrikus/search-
 
 ### Install search-headless
 
-**Requirements:**
-- `git`
-- `cargo` (see [rustup.rs](https://rustup.rs))
-
-**Steps:**
-
-```bash
-# 1. Clone the repository
-mkdir -p ~/dev
-git clone git@github.com:jandrikus/search-headless.git ~/dev/search-headless
-
-# 2. Run the install script
-cd ~/dev/search-headless
-./install.sh
-```
-
-The install script will:
-- Install `obscura` automatically if not found
-- Build the binary with `cargo build --release`
-- Copy it to `~/.local/bin`
+Follow the [search-headless installation instructions](https://github.com/jandrikus/search-headless#install-on-a-machine).
+The first prebuilt release is planned for Apple Silicon macOS and x86-64 Linux.
+Until it is published, install from source using Git and Rust.
 
 **Verify installation:**
 
@@ -49,17 +34,20 @@ If the command is not found, put the install directory on PATH:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+On macOS, add that line to `~/.zshrc` to keep it for new shells.
+
 For more details, see the [search-headless README](https://github.com/jandrikus/search-headless).
 
 ## Install pi-search-tool
 
 ### Option 1: Install from npm (recommended)
 
-Once published to npm:
-
 ```bash
 pi install npm:pi-search-tool
 ```
+
+The currently published npm version may lag behind this repository.
+SearXNG support requires a release containing the SearXNG changes.
 
 ### Option 2: Install from git
 
@@ -99,19 +87,32 @@ pi -e /path/to/pi-search-tool/extensions/index.ts
 
 When you install a pi package, it's automatically added to your settings. You can also manually add it to your Pi configuration:
 
-**User settings** (`~/.pi/agent/settings.json`):
+The extension defaults to SearXNG.
+Set its HTTPS base URL in **user settings** (`~/.pi/agent/settings.json`):
+
 ```json
 {
-  "packages": ["npm:pi-search-tool"]
+  "packages": ["npm:pi-search-tool"],
+  "searchTool": {
+    "engine": "searxng",
+    "searxngUrl": "https://your-searxng.example"
+  }
 }
 ```
 
-**Project settings** (`.pi/settings.json`):
-```json
-{
-  "packages": ["npm:pi-search-tool"]
-}
-```
+Set `SEARXNG_USER` and `SEARXNG_PASS` in the environment that starts Pi.
+The backend requires both variables for HTTP Basic authentication, even if the instance is public.
+The username must not contain a colon.
+Do not put credentials in the URL or settings.
+The instance must enable JSON in `search.formats` in `settings.yml`.
+The URL must be the final HTTPS base URL, without credentials, a query string or a fragment.
+Authenticated requests do not follow redirects.
+
+`searchTool.searxngUrl` takes precedence over the `SEARXNG_URL` environment variable.
+Set `searchTool.engine` to `brave` to use Brave instead.
+There is no automatic fallback between engines.
+The extension reads `searchTool` only from user settings, not project settings, so a project cannot choose where credentials are sent.
+Pi can still load the package through project settings.
 
 ## Usage
 
@@ -126,6 +127,9 @@ search(query: "best practices for REST API design", limit: 10)
 **Parameters:**
 - `query` (required) — The search query. Can be a question, keywords, or phrase.
 - `limit` (optional) — Maximum number of results to return (default: 10, max: 20).
+- `paginate` (optional) — Follow more result pages until the limit is reached (default: false).
+
+Without `paginate`, the tool reads one result page even if fewer results than the limit are returned.
 
 **Returns:** Markdown-formatted results with titles, URLs, and snippets.
 
@@ -156,7 +160,7 @@ The extension provides rich UI rendering with collapsed and expanded views:
 - Expanded: Shows full markdown content of the page
 
 **Metadata displayed:**
-- Search engine used (Brave)
+- Search engine used (SearXNG or Brave)
 - Number of search results
 - Content size in human-readable format
 - Truncation indicator
@@ -170,18 +174,24 @@ The extension provides rich UI rendering with collapsed and expanded views:
 3. Converts the JSON to clean markdown for the LLM
 4. Displays rich metadata in the UI with collapsed/expanded states
 
-## Search Engines
+## Search engines
 
-| Engine | Backend | Challenge | Login |
-|--------|---------|-----------|-------|
-| **Brave** | Obscura | Reported as `blocked`, never solved | Not required |
+| Engine | Backend | Authentication |
+|--------|---------|----------------|
+| SearXNG | JSON API of the configured instance | HTTP Basic credentials from the environment |
+| Brave | Obscura | None |
 
-Brave is the only engine. Obscura is the only browser — there is no Playwright, and no Chromium
-download. If Brave serves a bot challenge, the tool reports it rather than working around it.
+The Pi extension defaults to SearXNG.
+The standalone `search-headless` CLI defaults to Brave, so choose `--engine searxng` when using the CLI directly.
+SearXNG upstream failures are reported alongside any usable results.
 
-## Rate Limiting
+Brave searches are spaced 10 seconds apart.
+If Brave serves a bot challenge, the tool reports it instead of working around it and pauses uncached Brave searches for 15 minutes.
+Cached Brave results remain available during the cooldown.
+SearXNG does not use the Brave cooldown, but its instance may have its own rate limits.
 
-Brave searches are automatically spaced 10 seconds apart to avoid triggering bot detection. No configuration needed.
+Obscura is the only browser backend.
+There is no Playwright or Chromium download.
 
 ## Development
 

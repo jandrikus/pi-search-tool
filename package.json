@@ -1,6 +1,6 @@
 {
   "name": "pi-search-tool",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "license": "Apache-2.0",
   "keywords": ["pi-package", "pi-extension", "search", "fetch", "web-search", "content-extraction"],
@@ -19,8 +19,8 @@
     "typebox": "*"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "typescript": "latest",
-    "vitest": "latest"
+    "@types/bun": "^1.4.4",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
   }
 }

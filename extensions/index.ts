@@ -145,8 +145,8 @@ async function resolveSearchHeadless(): Promise<string> {
     return stdout.trim();
   } catch {
     throw new Error(
-      "Command 'search-headless' not found. Please install search-headless: " +
-      "cd ~/dev/search-headless && ./install.sh"
+      "Command 'search-headless' not found. Install it and add it to PATH: " +
+      "https://github.com/jandrikus/search-headless#install-on-a-machine"
     );
   }
 }

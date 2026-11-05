@@ -349,7 +349,7 @@ describe("failures reach the model as text, not as a thrown error", () => {
       const result = await search.execute("call-1", { query: "example" });
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("search-headless");
-      expect(result.content[0].text).toContain("./install.sh");
+      expect(result.content[0].text).toContain("https://github.com/jandrikus/search-headless#install-on-a-machine");
       expect(result.details.errors[0].code).toBe("execution_error");
     } finally {
       restore();
