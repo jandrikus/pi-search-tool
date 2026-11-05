@@ -3,6 +3,7 @@ name: Publish to npm
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 permissions:
   id-token: write
@@ -16,6 +17,5 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
       - run: npm publish
