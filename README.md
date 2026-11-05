@@ -40,27 +40,23 @@ For more details, see the [search-headless README](https://github.com/jandrikus/
 
 ## Install pi-search-tool
 
-### Option 1: Install from npm (recommended)
+### Option 1: Install the release from Git
 
 ```bash
-pi install npm:pi-search-tool
+pi install git:github.com/jandrikus/pi-search-tool@v0.1.1
 ```
 
-The currently published npm version may lag behind this repository.
-SearXNG support requires a release containing the SearXNG changes.
+### Option 2: Install from npm
 
-### Option 2: Install from git
-
-```bash
-pi install git:github.com/jandrikus/pi-search-tool
-```
+The npm package is currently at `0.1.0` and does not contain the SearXNG changes.
+Use the Git release above until `0.1.1` is published on npm.
 
 ### Option 3: Try without installing
 
 To try the extension without installing it permanently:
 
 ```bash
-pi -e npm:pi-search-tool
+pi -e git:github.com/jandrikus/pi-search-tool@v0.1.1
 ```
 
 Or from a local path:
@@ -92,7 +88,7 @@ Set its HTTPS base URL in **user settings** (`~/.pi/agent/settings.json`):
 
 ```json
 {
-  "packages": ["npm:pi-search-tool"],
+  "packages": ["git:github.com/jandrikus/pi-search-tool@v0.1.1"],
   "searchTool": {
     "engine": "searxng",
     "searxngUrl": "https://your-searxng.example"
